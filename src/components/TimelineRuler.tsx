@@ -8,11 +8,11 @@ interface TimelineRulerProps {
 }
 
 const TimelineRuler: React.FC<TimelineRulerProps> = ({ duration, width, height }) => {
-  const initialScale = 0.67;
-  const [scale, setScale] = useState(initialScale);
   const minScale = 0.33;
-  const maxScale = 3;
-  
+  const maxScale = 10;
+  const [scale, setScale] = useState(minScale);
+  const [offsetX, setOffsetX] = useState(0);
+
   const styles = {
     background: '#FFFFFF',
     mainTickColor: '#333333',
@@ -24,10 +24,15 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({ duration, width, height }
     tickPadding: 15,
   };
 
+  // 获取当前可见时间范围
   const getVisibleTimeRange = useCallback(() => {
+    // 计算实际缩放后的宽度
     const scaledWidth = width * scale;
+    // 计算每像素代表的秒数
     const secondsPerPixel = duration / scaledWidth;
+    // 计算当前可见区域的总秒数
     const visibleSeconds = width * secondsPerPixel;
+    // 返回可见时间范围,从0开始到可见秒数(向上取整)
     return {
       start: 0,
       end: Math.ceil(visibleSeconds)
@@ -35,58 +40,35 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({ duration, width, height }
   }, [duration, width, scale]);
 
   const getTickConfig = useCallback(() => {
-    if (scale >= 2) {
-      return {
-        mainInterval: 60,
-        subInterval: 15,
-        showText: true
-      };
-    } else if (scale >= 1) {
-      return {
-        mainInterval: 120,
-        subInterval: 30,
-        showText: true
-      };
-    } else {
-      return {
-        mainInterval: 300,
-        subInterval: 60,
-        showText: true
-      };
-    }
-  }, [scale]);
+    const scaledWidth = width * scale;
+    const pixelsPerSecond = scaledWidth / duration;
+    console.log('pixelsPerSecond', pixelsPerSecond);
+
+    // 根据缩放比例计算合适的时间间隔
+    let interval = Math.ceil(80 / pixelsPerSecond)
+
+    return {
+      mainInterval: interval
+    };
+  }, [scale, width, duration]);
 
   const formatTime = (seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
     const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
   const renderTicks = () => {
-    const { mainInterval, subInterval, showText } = getTickConfig();
+    const { mainInterval } = getTickConfig();
     const ticks = [];
     const scaledWidth = width * scale;
     const pixelsPerSecond = scaledWidth / duration;
     const { end } = getVisibleTimeRange();
-    const renderEndTime = Math.max(duration, end + mainInterval);
-
-    // 添加背景和边框
-    ticks.push(
-      <Rect
-        key="background"
-        x={0}
-        y={0}
-        width={width}
-        height={styles.rulerHeight}
-        fill={styles.background}
-        stroke={styles.borderColor}
-        strokeWidth={1}
-        shadowColor="rgba(0,0,0,0.05)"
-        shadowBlur={3}
-        shadowOffsetY={1}
-        cornerRadius={4}
-      />
-    );
+    const renderEndTime = Math.max(
+      duration,
+      end + (scaledWidth > width ? mainInterval * 2 : mainInterval));
 
     // 添加顶部边框线
     ticks.push(
@@ -97,63 +79,105 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({ duration, width, height }
         strokeWidth={1}
       />
     );
-
-    for (let time = 0; time <= renderEndTime; time += subInterval) {
+    console.log('renderEndTime', renderEndTime);
+    // 只渲染主刻度线
+    for (let time = 0; time <= renderEndTime; time += mainInterval) {
       const x = (time * pixelsPerSecond);
-      const isMainTick = time % mainInterval === 0;
-      
-      // 刻度线（从上往下画）
+
+      // 主刻度线
       ticks.push(
         <Line
           key={`line-${time}`}
           points={[
-            x, 
-            styles.tickPadding, 
-            x, 
-            styles.tickPadding + (isMainTick ? 20 : 12)
+            x,
+            styles.tickPadding,
+            x,
+            styles.tickPadding + 20
           ]}
-          stroke={isMainTick ? styles.mainTickColor : styles.subTickColor}
-          strokeWidth={isMainTick ? 1 : 0.5}
-          opacity={isMainTick ? 0.8 : 0.4}
+          stroke={styles.mainTickColor}
+          strokeWidth={1}
+          opacity={0.8}
         />
       );
 
-      // 时间文本（放在刻度线右侧）
-      if (isMainTick && showText) {
-        ticks.push(
-          <Text
-            key={`text-${time}`}
-            x={x + 4}
-            y={styles.tickPadding + 4}
-            text={formatTime(time)}
-            fontSize={11}
-            fontFamily="Arial"
-            fill={styles.textColor}
-            opacity={0.85}
-            align="left"
-          />
-        );
-      }
+      // 时间文本
+      ticks.push(
+        <Text
+          key={`text-${time}`}
+          x={x + 4}
+          y={styles.tickPadding + 4}
+          text={formatTime(time)}
+          fontSize={11}
+          fontFamily="Arial"
+          fill={styles.textColor}
+          opacity={0.85}
+          align="left"
+        />
+      );
     }
 
     return ticks;
   };
 
+  /**
+   * 处理鼠标滚轮事件
+   * @param e 滚轮事件对象
+   */
   const handleWheel = (e: any) => {
+    // 阻止默认滚动行为
     e.evt.preventDefault();
+
+    // 缩放系数
     const scaleBy = 1.1;
+    // 根据滚轮方向计算新的缩放比例
     const newScale = e.evt.deltaY < 0 ? scale * scaleBy : scale / scaleBy;
-    if (newScale >= minScale && newScale <= maxScale) {
-      setScale(newScale);
+    // 计算新的每秒像素数
+    // 计算新的pixelsPerSecond
+    const newPixelsPerSecond = (width * newScale) / duration;
+
+    // 如果是放大操作（deltaY < 0）且已经达到最大缩放，则不再放大
+    if (e.evt.deltaY < 0 && newPixelsPerSecond >= 120) {  // 调整为120像素/秒
+      return;
     }
+
+    if (newScale < minScale || newScale > maxScale) {
+      return;
+    }
+    console.log('newScale', newScale);
+    setScale(newScale);
   };
 
   return (
-    <Stage width={width} height={height} onWheel={handleWheel}>
-      <Layer>
-        <Group x={0} y={10}>{renderTicks()}</Group>
-      </Layer>
-    </Stage>
+    <div style={{ position: 'relative' }}>
+      <Stage width={width} height={height - 20} onWheel={handleWheel}>
+        <Layer offsetX={offsetX}>
+          <Group x={0} y={10}>{renderTicks()}</Group>
+        </Layer>
+      </Stage>
+      <div
+        style={{
+          width: width,
+          height: '16px',
+          position: 'absolute',
+          bottom: -100,
+          left: 0,
+          overflow: 'auto'
+        }}
+        onScroll={(e) => {
+          const scrollLeft = e.currentTarget.scrollLeft;
+          setOffsetX(scrollLeft);
+        }}
+      >
+        <div
+          style={{
+            width: width * scale,
+            height: '100%',
+            position: 'relative'
+          }}
+        />
+
+      </div>
+    </div>
   );
 };
 

@@ -7,15 +7,13 @@ import TimelineRuler from './components/TimelineRuler';
 const App: React.FC = () => {
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
-      
+
       <div className="App">
-        <div style={{ padding: '20px' }}>
-          <TimelineRuler
-            duration={1800} // 30分钟 = 1800秒
-            width={1200}
-            height={60}
-          />
-        </div>
+        <TimelineRuler
+          duration={26*2} // 30分钟 = 1800秒
+          width={window.innerWidth}
+          height={60}
+        />
       </div>
     </div>
   );
