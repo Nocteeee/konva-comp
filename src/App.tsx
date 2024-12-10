@@ -2,31 +2,21 @@ import React from 'react';
 import { Stage, Layer } from 'react-konva';
 import EditableImage from './components/EditableImage';
 import EditableVideo from './components/EditableVideo';
+import TimelineRuler from './components/TimelineRuler';
 
 const App: React.FC = () => {
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
-      <Stage width={window.innerWidth} height={window.innerHeight}>
-        <Layer>
-          {/* 图片示例 */}
-          <EditableImage
-            x={100}
-            y={100}
-            width={300}
-            height={200}
-            src="/path/to/your/image.jpg"
+      
+      <div className="App">
+        <div style={{ padding: '20px' }}>
+          <TimelineRuler
+            duration={1800} // 30分钟 = 1800秒
+            width={1200}
+            height={60}
           />
-          
-          {/* 视频示例 */}
-          <EditableVideo
-            x={500}
-            y={100}
-            width={300}
-            height={200}
-            src="/path/to/your/video.mp4"
-          />
-        </Layer>
-      </Stage>
+        </div>
+      </div>
     </div>
   );
 };

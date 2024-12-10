@@ -1,208 +1,157 @@
-import React, { useState, useRef } from 'react';
-import { Stage, Layer, Line, Text, Rect } from 'react-konva';
-import Konva from 'konva';
-
-interface Clip {
-  id: string;
-  startTime: number;  // 毫秒
-  duration: number;   // 毫秒
-  color?: string;
-}
+import { Stage, Layer, Line, Text, Group, Rect } from 'react-konva';
+import { useState, useCallback } from 'react';
 
 interface TimelineRulerProps {
+  duration: number;
   width: number;
   height: number;
-  clips?: Clip[];
-  currentTime?: number;
-  pixelsPerSecond?: number;
-  onTimeChange?: (time: number) => void;
 }
 
-const TimelineRuler: React.FC<TimelineRulerProps> = ({ 
-  width, 
-  height,
-  clips = [],
-  currentTime = 0,
-  pixelsPerSecond = 100,
-  onTimeChange
-}) => {
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [scale, setScale] = useState(1);
-  const isDragging = useRef(false);
-  const lastPosition = useRef({ x: 0, y: 0 });
+const TimelineRuler: React.FC<TimelineRulerProps> = ({ duration, width, height }) => {
+  const initialScale = 0.67;
+  const [scale, setScale] = useState(initialScale);
+  const minScale = 0.33;
+  const maxScale = 3;
+  
+  const styles = {
+    background: '#FFFFFF',
+    mainTickColor: '#333333',
+    subTickColor: '#999999',
+    textColor: '#666666',
+    currentTimeColor: '#1890FF',
+    borderColor: '#E8E8E8',
+    rulerHeight: height - 20,
+    tickPadding: 15,
+  };
 
-  // 绘制时间刻度
-  const drawTimeMarks = () => {
-    const marks: JSX.Element[] = [];
-    const startX = Math.floor(-position.x / (pixelsPerSecond * scale)) * pixelsPerSecond * scale;
-    const endX = startX + (width / scale) + 200;
-    const mainStep = pixelsPerSecond * scale;
-    
-    // 基准线
-    marks.push(
+  const getVisibleTimeRange = useCallback(() => {
+    const scaledWidth = width * scale;
+    const secondsPerPixel = duration / scaledWidth;
+    const visibleSeconds = width * secondsPerPixel;
+    return {
+      start: 0,
+      end: Math.ceil(visibleSeconds)
+    };
+  }, [duration, width, scale]);
+
+  const getTickConfig = useCallback(() => {
+    if (scale >= 2) {
+      return {
+        mainInterval: 60,
+        subInterval: 15,
+        showText: true
+      };
+    } else if (scale >= 1) {
+      return {
+        mainInterval: 120,
+        subInterval: 30,
+        showText: true
+      };
+    } else {
+      return {
+        mainInterval: 300,
+        subInterval: 60,
+        showText: true
+      };
+    }
+  }, [scale]);
+
+  const formatTime = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
+
+  const renderTicks = () => {
+    const { mainInterval, subInterval, showText } = getTickConfig();
+    const ticks = [];
+    const scaledWidth = width * scale;
+    const pixelsPerSecond = scaledWidth / duration;
+    const { end } = getVisibleTimeRange();
+    const renderEndTime = Math.max(duration, end + mainInterval);
+
+    // 添加背景和边框
+    ticks.push(
+      <Rect
+        key="background"
+        x={0}
+        y={0}
+        width={width}
+        height={styles.rulerHeight}
+        fill={styles.background}
+        stroke={styles.borderColor}
+        strokeWidth={1}
+        shadowColor="rgba(0,0,0,0.05)"
+        shadowBlur={3}
+        shadowOffsetY={1}
+        cornerRadius={4}
+      />
+    );
+
+    // 添加顶部边框线
+    ticks.push(
       <Line
-        key="baseline"
-        points={[0, height - 25, width, height - 25]}
-        stroke="#666"
+        key="top-border"
+        points={[0, styles.tickPadding, width, styles.tickPadding]}
+        stroke={styles.borderColor}
         strokeWidth={1}
       />
     );
 
-    // 根据缩放级别决定刻度精度
-    const showMilliseconds = scale > 2;
-    const subSteps = showMilliseconds ? 10 : 4;
-
-    for (let x = startX; x < endX; x += mainStep) {
-      // 主刻度线
-      marks.push(
+    for (let time = 0; time <= renderEndTime; time += subInterval) {
+      const x = (time * pixelsPerSecond);
+      const isMainTick = time % mainInterval === 0;
+      
+      // 刻度线（从上往下画）
+      ticks.push(
         <Line
-          key={`line-${x}`}
-          points={[x, height - 25, x, height - 10]}
-          stroke="#333"
-          strokeWidth={1}
+          key={`line-${time}`}
+          points={[
+            x, 
+            styles.tickPadding, 
+            x, 
+            styles.tickPadding + (isMainTick ? 20 : 12)
+          ]}
+          stroke={isMainTick ? styles.mainTickColor : styles.subTickColor}
+          strokeWidth={isMainTick ? 1 : 0.5}
+          opacity={isMainTick ? 0.8 : 0.4}
         />
       );
 
-      // 小刻度线
-      for (let i = 1; i < subSteps; i++) {
-        const subX = x + (mainStep * i) / subSteps;
-        marks.push(
-          <Line
-            key={`subline-${subX}`}
-            points={[subX, height - 25, subX, height - 20]}
-            stroke="#999"
-            strokeWidth={0.5}
+      // 时间文本（放在刻度线右侧）
+      if (isMainTick && showText) {
+        ticks.push(
+          <Text
+            key={`text-${time}`}
+            x={x + 4}
+            y={styles.tickPadding + 4}
+            text={formatTime(time)}
+            fontSize={11}
+            fontFamily="Arial"
+            fill={styles.textColor}
+            opacity={0.85}
+            align="left"
           />
         );
       }
-
-      // 时间文本
-      const seconds = x / (pixelsPerSecond * scale);
-      const timeText = showMilliseconds 
-        ? `${seconds.toFixed(2)}s`
-        : `${Math.floor(seconds)}s`;
-      
-      marks.push(
-        <Text
-          key={`text-${x}`}
-          x={x - 15}
-          y={height - 45}
-          text={timeText}
-          fontSize={12}
-          fill="#333"
-          width={30}
-          align="center"
-        />
-      );
     }
-    return marks;
+
+    return ticks;
   };
 
-  // 绘制剪辑块
-  const drawClips = () => {
-    return clips.map(clip => {
-      const x = clip.startTime * (pixelsPerSecond * scale) / 1000;
-      const width = clip.duration * (pixelsPerSecond * scale) / 1000;
-      
-      return (
-        <React.Fragment key={clip.id}>
-          <Rect
-            x={x}
-            y={10}
-            width={width}
-            height={height - 60}
-            fill={clip.color || '#4a9eff'}
-            opacity={0.6}
-            cornerRadius={4}
-          />
-        </React.Fragment>
-      );
-    });
-  };
-
-  // 绘制播放指针
-  const drawPlayhead = () => {
-    const x = currentTime * (pixelsPerSecond * scale) / 1000;
-    return (
-      <Line
-        x={x}
-        points={[0, 0, 0, height]}
-        stroke="#ff0000"
-        strokeWidth={2}
-        draggable
-        onDragMove={(e) => {
-          const newTime = (e.target.x() * 1000) / (pixelsPerSecond * scale);
-          onTimeChange?.(newTime);
-        }}
-      />
-    );
-  };
-
-  // 处理拖动
-  const handleDragStart = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    isDragging.current = true;
-    lastPosition.current = {
-      x: e.evt.clientX,
-      y: e.evt.clientY,
-    };
-  };
-
-  const handleDragMove = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    if (!isDragging.current) return;
-
-    const newPosition = {
-      x: position.x + (e.evt.clientX - lastPosition.current.x),
-      y: 0,
-    };
-
-    setPosition(newPosition);
-    lastPosition.current = {
-      x: e.evt.clientX,
-      y: e.evt.clientY,
-    };
-  };
-
-  const handleDragEnd = () => {
-    isDragging.current = false;
-  };
-
-  // 处理缩放
-  const handleWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
+  const handleWheel = (e: any) => {
     e.evt.preventDefault();
-    
     const scaleBy = 1.1;
-    const oldScale = scale;
-    const mousePointTo = {
-      x: e.evt.clientX / oldScale - position.x / oldScale,
-      y: 0,
-    };
-
-    const newScale = e.evt.deltaY > 0 ? oldScale / scaleBy : oldScale * scaleBy;
-    
-    setScale(newScale);
-    
-    const newPos = {
-      x: -(mousePointTo.x - e.evt.clientX / newScale) * newScale,
-      y: 0,
-    };
-    
-    setPosition(newPos);
+    const newScale = e.evt.deltaY < 0 ? scale * scaleBy : scale / scaleBy;
+    if (newScale >= minScale && newScale <= maxScale) {
+      setScale(newScale);
+    }
   };
 
   return (
-    <Stage
-      width={width}
-      height={height}
-      onMouseDown={handleDragStart}
-      onMouseMove={handleDragMove}
-      onMouseUp={handleDragEnd}
-      onMouseLeave={handleDragEnd}
-      onWheel={handleWheel}
-    >
+    <Stage width={width} height={height} onWheel={handleWheel}>
       <Layer>
-        {drawTimeMarks()}
-        {drawClips()}
-        {drawPlayhead()}
+        <Group x={0} y={10}>{renderTicks()}</Group>
       </Layer>
     </Stage>
   );
