@@ -1,5 +1,6 @@
 import { Stage, Layer, Line, Text, Group } from 'react-konva';
 import { useState, useCallback, useMemo } from 'react';
+import { formatTime } from '../utils';
 
 interface TimelineRulerProps {
   duration: number;
@@ -7,34 +8,33 @@ interface TimelineRulerProps {
   height: number;
 }
 
+const styles = {
+  background: '#FFFFFF',
+  mainTickColor: '#333333',
+  subTickColor: '#999999',
+  textColor: '#666666',
+  currentTimeColor: '#1890FF',
+  borderColor: '#E8E8E8',
+  tickPadding: 15,
+};
+
+const minScale = 0.33;
+
 const TimelineRuler: React.FC<TimelineRulerProps> = ({ duration, width, height }) => {
-  const minScale = 0.33;
-  
+  const [scale, setScale] = useState(minScale);
+  const [offsetX, setOffsetX] = useState(0);
+
   // 计算实际使用的时长（原时长 + 1/5）
   const actualDuration = useMemo(() => {
     return duration * 1.2; // 增加1/5的长度
   }, [duration]);
-  
+
   // 动态计算最大缩放比例
   const maxScale = useMemo(() => {
     const targetPixelsPerSecond = 100;
     // 计算所需的最大缩放比例，使用actualDuration
     return Math.ceil((actualDuration * targetPixelsPerSecond) / width);
   }, [actualDuration, width]);
-
-  const [scale, setScale] = useState(minScale);
-  const [offsetX, setOffsetX] = useState(0);
-
-  const styles = {
-    background: '#FFFFFF',
-    mainTickColor: '#333333',
-    subTickColor: '#999999',
-    textColor: '#666666',
-    currentTimeColor: '#1890FF',
-    borderColor: '#E8E8E8',
-    rulerHeight: height - 20,
-    tickPadding: 15,
-  };
 
   // 获取当前可见时间范围
   const getVisibleTimeRange = useCallback(() => {
@@ -52,19 +52,11 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({ duration, width, height }
     const pixelsPerSecond = scaledWidth / actualDuration;
 
     const interval = Math.ceil(80 / pixelsPerSecond)
-    
+
     return {
       mainInterval: interval
     };
   }, [scale, width, actualDuration]);
-
-  const formatTime = (seconds: number) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const remainingSeconds = seconds % 60;
-
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
-  };
 
   const renderTicks = () => {
     const { mainInterval } = getTickConfig();
@@ -78,7 +70,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({ duration, width, height }
     ticks.push(
       <Line
         key="top-border"
-        points={[0, styles.tickPadding, width, styles.tickPadding]}
+        points={[0, 0, width, 0]}
         stroke={styles.borderColor}
         strokeWidth={1}
       />
@@ -94,9 +86,9 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({ duration, width, height }
           key={`line-${time}`}
           points={[
             x,
-            styles.tickPadding,
+            0,
             x,
-            styles.tickPadding + 20
+            styles.tickPadding
           ]}
           stroke={styles.mainTickColor}
           strokeWidth={1}
@@ -109,7 +101,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({ duration, width, height }
         <Text
           key={`text-${time}`}
           x={x + 4}
-          y={styles.tickPadding + 4}
+          y={5}
           text={formatTime(time)}
           fontSize={11}
           fontFamily="Arial"
@@ -156,7 +148,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({ duration, width, height }
 
   return (
     <div style={{ position: 'relative' }}>
-      <Stage width={width} height={height - 20} onWheel={handleWheel}>
+      <Stage width={width} height={height} onWheel={handleWheel}>
         <Layer offsetX={offsetX}>
           <Group x={0} y={10}>{renderTicks()}</Group>
         </Layer>
