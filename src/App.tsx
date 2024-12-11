@@ -10,7 +10,7 @@ const App: React.FC = () => {
 
       <div className="App">
         <TimelineRuler
-          duration={26*2} // 30分钟 = 1800秒
+          duration={60 * 180} // 30分钟 = 1800秒
           width={window.innerWidth}
           height={60}
         />

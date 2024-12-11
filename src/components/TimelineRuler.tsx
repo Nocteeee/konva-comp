@@ -1,5 +1,5 @@
-import { Stage, Layer, Line, Text, Group, Rect } from 'react-konva';
-import { useState, useCallback } from 'react';
+import { Stage, Layer, Line, Text, Group } from 'react-konva';
+import { useState, useCallback, useMemo } from 'react';
 
 interface TimelineRulerProps {
   duration: number;
@@ -9,7 +9,19 @@ interface TimelineRulerProps {
 
 const TimelineRuler: React.FC<TimelineRulerProps> = ({ duration, width, height }) => {
   const minScale = 0.33;
-  const maxScale = 10;
+  
+  // 计算实际使用的时长（原时长 + 1/5）
+  const actualDuration = useMemo(() => {
+    return duration * 1.2; // 增加1/5的长度
+  }, [duration]);
+  
+  // 动态计算最大缩放比例
+  const maxScale = useMemo(() => {
+    const targetPixelsPerSecond = 100;
+    // 计算所需的最大缩放比例，使用actualDuration
+    return Math.ceil((actualDuration * targetPixelsPerSecond) / width);
+  }, [actualDuration, width]);
+
   const [scale, setScale] = useState(minScale);
   const [offsetX, setOffsetX] = useState(0);
 
@@ -26,31 +38,25 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({ duration, width, height }
 
   // 获取当前可见时间范围
   const getVisibleTimeRange = useCallback(() => {
-    // 计算实际缩放后的宽度
     const scaledWidth = width * scale;
-    // 计算每像素代表的秒数
-    const secondsPerPixel = duration / scaledWidth;
-    // 计算当前可见区域的总秒数
+    const secondsPerPixel = actualDuration / scaledWidth;
     const visibleSeconds = width * secondsPerPixel;
-    // 返回可见时间范围,从0开始到可见秒数(向上取整)
     return {
       start: 0,
       end: Math.ceil(visibleSeconds)
     };
-  }, [duration, width, scale]);
+  }, [actualDuration, width, scale]);
 
   const getTickConfig = useCallback(() => {
     const scaledWidth = width * scale;
-    const pixelsPerSecond = scaledWidth / duration;
-    console.log('pixelsPerSecond', pixelsPerSecond);
+    const pixelsPerSecond = scaledWidth / actualDuration;
 
-    // 根据缩放比例计算合适的时间间隔
-    let interval = Math.ceil(80 / pixelsPerSecond)
-
+    const interval = Math.ceil(80 / pixelsPerSecond)
+    
     return {
       mainInterval: interval
     };
-  }, [scale, width, duration]);
+  }, [scale, width, actualDuration]);
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -64,11 +70,9 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({ duration, width, height }
     const { mainInterval } = getTickConfig();
     const ticks = [];
     const scaledWidth = width * scale;
-    const pixelsPerSecond = scaledWidth / duration;
+    const pixelsPerSecond = scaledWidth / actualDuration;
     const { end } = getVisibleTimeRange();
-    const renderEndTime = Math.max(
-      duration,
-      end + (scaledWidth > width ? mainInterval * 2 : mainInterval));
+    const renderEndTime = Math.max(actualDuration, end);
 
     // 添加顶部边框线
     ticks.push(
@@ -79,7 +83,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({ duration, width, height }
         strokeWidth={1}
       />
     );
-    console.log('renderEndTime', renderEndTime);
+
     // 只渲染主刻度线
     for (let time = 0; time <= renderEndTime; time += mainInterval) {
       const x = (time * pixelsPerSecond);
@@ -124,6 +128,11 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({ duration, width, height }
    * @param e 滚轮事件对象
    */
   const handleWheel = (e: any) => {
+    // 检查是否按住Command(Mac)或Ctrl(Windows)键
+    if (!(e.evt.metaKey || e.evt.ctrlKey)) {
+      return;
+    }
+
     // 阻止默认滚动行为
     e.evt.preventDefault();
 
@@ -132,8 +141,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({ duration, width, height }
     // 根据滚轮方向计算新的缩放比例
     const newScale = e.evt.deltaY < 0 ? scale * scaleBy : scale / scaleBy;
     // 计算新的每秒像素数
-    // 计算新的pixelsPerSecond
-    const newPixelsPerSecond = (width * newScale) / duration;
+    const newPixelsPerSecond = (width * newScale) / actualDuration;
 
     // 如果是放大操作（deltaY < 0）且已经达到最大缩放，则不再放大
     if (e.evt.deltaY < 0 && newPixelsPerSecond >= 120) {  // 调整为120像素/秒
@@ -143,7 +151,6 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({ duration, width, height }
     if (newScale < minScale || newScale > maxScale) {
       return;
     }
-    console.log('newScale', newScale);
     setScale(newScale);
   };
 
@@ -175,7 +182,6 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({ duration, width, height }
             position: 'relative'
           }}
         />
-
       </div>
     </div>
   );
