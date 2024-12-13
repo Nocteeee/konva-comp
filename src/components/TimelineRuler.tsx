@@ -1,42 +1,58 @@
-import { Stage, Layer, Line, Text, Group } from 'react-konva';
-import { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
+import { Stage, Layer, Line, Text, Group, Rect } from 'react-konva';
+import Konva from 'konva';
+import { TimelineRulerProps, TextTrack } from '../types/timeline';
+import { TIMELINE_CONFIG } from '../constants/timeline';
+import { calculateTrackStartY, calculateTrackY } from '../utils/timelineUtils';
+import TextTrackComponent from './TextTrack';
 import { formatTime } from '../utils';
 
-interface TimelineRulerProps {
-  duration: number;
-  width: number;
-  height: number;
-}
-
-const styles = {
-  background: '#FFFFFF',
-  mainTickColor: '#333333',
-  subTickColor: '#999999',
-  textColor: '#666666',
-  currentTimeColor: '#1890FF',
-  borderColor: '#E8E8E8',
-  tickPadding: 15,
+/**
+ * 计算缩放相关参数
+ */
+const calculateScaleParams = (
+  width: number,
+  scale: number,
+  actualDuration: number
+) => {
+  const scaledWidth = width * scale;
+  const pixelsPerSecond = scaledWidth / actualDuration;
+  return { scaledWidth, pixelsPerSecond };
 };
 
-const minScale = 0.33;
-
-const TimelineRuler: React.FC<TimelineRulerProps> = ({ duration, width, height }) => {
-  const [scale, setScale] = useState(minScale);
+/**
+ * 时间轴标尺组件
+ */
+const TimelineRuler: React.FC<TimelineRulerProps> = ({ 
+  duration, 
+  width, 
+  height, 
+  textTracks: initialTracks = [] 
+}) => {
+  const stage = useRef<Konva.Stage>(null);
+  const [scale, setScale] = useState(TIMELINE_CONFIG.RULER.MIN_SCALE);
   const [offsetX, setOffsetX] = useState(0);
+  const [textTracks, setTextTracks] = useState(initialTracks);
+  const [targetTrack, setTargetTrack] = useState<number | null>(null);
 
   // 计算实际使用的时长（原时长 + 1/5）
-  const actualDuration = useMemo(() => {
-    return duration * 1.2; // 增加1/5的长度
-  }, [duration]);
+  const actualDuration = useMemo(() => duration * 1.2, [duration]);
 
   // 动态计算最大缩放比例
   const maxScale = useMemo(() => {
-    const targetPixelsPerSecond = 100;
-    // 计算所需的最大缩放比例，使用actualDuration
+    const targetPixelsPerSecond = TIMELINE_CONFIG.RULER.MAX_PIXELS_PER_SECOND;
     return Math.ceil((actualDuration * targetPixelsPerSecond) / width);
   }, [actualDuration, width]);
 
-  // 获取当前可见时间范围
+  // 计算轨道区域的起始Y坐标
+  const trackStartY = useMemo(() => 
+    calculateTrackStartY(height, textTracks.length), 
+    [height, textTracks.length]
+  );
+
+  /**
+   * 获取当前可见时间范围
+   */
   const getVisibleTimeRange = useCallback(() => {
     const scaledWidth = width * scale;
     const secondsPerPixel = actualDuration / scaledWidth;
@@ -47,17 +63,19 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({ duration, width, height }
     };
   }, [actualDuration, width, scale]);
 
+  /**
+   * 获取刻度配置
+   */
   const getTickConfig = useCallback(() => {
     const scaledWidth = width * scale;
     const pixelsPerSecond = scaledWidth / actualDuration;
-
-    const interval = Math.ceil(80 / pixelsPerSecond)
-
-    return {
-      mainInterval: interval
-    };
+    const interval = Math.ceil(80 / pixelsPerSecond);
+    return { mainInterval: interval };
   }, [scale, width, actualDuration]);
 
+  /**
+   * 渲染时间刻度线和文本
+   */
   const renderTicks = () => {
     const { mainInterval } = getTickConfig();
     const ticks = [];
@@ -71,41 +89,30 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({ duration, width, height }
       <Line
         key="top-border"
         points={[0, 0, width, 0]}
-        stroke={styles.borderColor}
+        stroke={TIMELINE_CONFIG.RULER.COLORS.BORDER}
         strokeWidth={1}
       />
     );
 
-    // 只渲染主刻度线
+    // 渲染主刻度线
     for (let time = 0; time <= renderEndTime; time += mainInterval) {
-      const x = (time * pixelsPerSecond);
-
-      // 主刻度线
+      const x = time * pixelsPerSecond;
       ticks.push(
         <Line
           key={`line-${time}`}
-          points={[
-            x,
-            0,
-            x,
-            styles.tickPadding
-          ]}
-          stroke={styles.mainTickColor}
+          points={[x, 0, x, TIMELINE_CONFIG.RULER.TICK_PADDING]}
+          stroke={TIMELINE_CONFIG.RULER.COLORS.MAIN_TICK}
           strokeWidth={1}
           opacity={0.8}
-        />
-      );
-
-      // 时间文本
-      ticks.push(
+        />,
         <Text
           key={`text-${time}`}
           x={x + 4}
           y={5}
           text={formatTime(time)}
           fontSize={11}
-          fontFamily="Arial"
-          fill={styles.textColor}
+          fontFamily={TIMELINE_CONFIG.TRACK.FONT.FAMILY}
+          fill={TIMELINE_CONFIG.RULER.COLORS.TEXT}
           opacity={0.85}
           align="left"
         />
@@ -140,40 +147,191 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({ duration, width, height }
       return;
     }
 
-    if (newScale < minScale || newScale > maxScale) {
+    if (newScale < TIMELINE_CONFIG.RULER.MIN_SCALE || newScale > maxScale) {
       return;
     }
     setScale(newScale);
   };
 
+  /**
+   * 处理轨道水平拖拽结束
+   */
+  const handleTrackDragEnd = (id: string, newStartX: number) => {
+    const { pixelsPerSecond } = calculateScaleParams(width, scale, actualDuration);
+    const newStartTime = Math.max(0, Math.round(newStartX / pixelsPerSecond));
+
+    setTextTracks(tracks => tracks.map(track => {
+      if (track.id === id) {
+        const duration = track.endTime - track.startTime;
+        return {
+          ...track,
+          startTime: newStartTime,
+          endTime: newStartTime + duration
+        };
+      }
+      return track;
+    }));
+  };
+
+  /**
+   * 处理轨道垂直位置变化
+   */
+  const handleTrackChange = (id: string, newTrack: number) => {
+    const draggedTrack = textTracks.find(t => t.id === id);
+    const targetTrack = textTracks.find(t => t.track === newTrack);
+    
+    if (!draggedTrack || !targetTrack) return;
+
+    animateTrackSwap(targetTrack.id, draggedTrack.track, () => {
+      updateTracksPosition(id, newTrack, draggedTrack, targetTrack);
+    });
+  };
+
+  /**
+   * 执行轨道交换动画
+   */
+  const animateTrackSwap = (targetId: string, newTrackPos: number, onComplete: () => void) => {
+    const targetNode = stage.current?.findOne(`#${targetId}`);
+    if (targetNode) {
+      targetNode.to({
+        y: trackStartY + newTrackPos * TIMELINE_CONFIG.TRACK.SPACING,
+        duration: TIMELINE_CONFIG.RULER.ANIMATION_DURATION,
+        onFinish: onComplete
+      });
+    }
+  };
+
+  /**
+   * 更新轨道位置状态
+   */
+  const updateTracksPosition = (
+    draggedId: string, 
+    newTrack: number, 
+    draggedTrack: TextTrack, 
+    targetTrack: TextTrack
+  ) => {
+    setTextTracks(tracks => tracks.map(track => {
+      if (track.id === draggedId) {
+        return { ...track, track: newTrack };
+      }
+      if (track.id === targetTrack.id) {
+        return { ...track, track: draggedTrack.track };
+      }
+      return track;
+    }));
+    setTargetTrack(null);
+  };
+
+  /**
+   * 渲染轨道背景
+   */
+  const renderTrackBackground = () => {
+    const { scaledWidth } = calculateScaleParams(width, maxScale, actualDuration);
+    return Array.from({ length: textTracks.length }).map((_, index) => (
+      <Group key={`track-bg-${index}`}>
+        <Rect
+          x={0}
+          y={trackStartY + index * TIMELINE_CONFIG.TRACK.SPACING}
+          width={scaledWidth}
+          height={TIMELINE_CONFIG.TRACK.HEIGHT}
+          fill="#FAFAFA"
+          stroke={TIMELINE_CONFIG.TRACK.COLORS.BORDER}
+          strokeWidth={1}
+        />
+        {renderTrackIndicator(index)}
+      </Group>
+    ));
+  };
+
+  /**
+   * 渲染轨道指示线
+   */
+  const renderTrackIndicator = (index: number) => {
+    if (index !== targetTrack) return null;
+    
+    const { scaledWidth } = calculateScaleParams(width, maxScale, actualDuration);
+    return (
+      <Line
+        x={0}
+        y={trackStartY + index * TIMELINE_CONFIG.TRACK.SPACING + TIMELINE_CONFIG.TRACK.HEIGHT}
+        points={[0, 0, scaledWidth, 0]}
+        stroke={TIMELINE_CONFIG.TRACK.COLORS.INDICATOR}
+        strokeWidth={2}
+      />
+    );
+  };
+
+  const renderTextTracks = () => {
+    const scaledWidth = width * scale;
+    const pixelsPerSecond = scaledWidth / actualDuration;
+    const maxX = duration * pixelsPerSecond;
+
+    return textTracks.map((track) => {
+      const startX = track.startTime * pixelsPerSecond;
+      const trackWidth = (track.endTime - track.startTime) * pixelsPerSecond;
+      const trackY = trackStartY + track.track * 40;  // 使用计算的起始位置
+
+      return (
+        <TextTrackComponent
+          key={track.id}
+          id={track.id}
+          text={track.text}
+          startX={startX}
+          width={trackWidth}
+          y={trackY}
+          track={track.track}
+          maxX={maxX}
+          tracksCount={textTracks.length}
+          isTargeted={track.track === targetTrack}
+          onDragEnd={handleTrackDragEnd}
+          onChange={handleTrackChange}
+          onDrag={handleTrackDrag}
+          trackStartY={trackStartY}
+        />
+      );
+    });
+  };
+
+  /**
+   * 处理轨道拖拽过程
+   */
+  const handleTrackDrag = (id: string, newY: number) => {
+    const track = textTracks.find(t => t.id === id);
+    if (!track) return;
+
+    const newTrack = Math.round((newY - trackStartY) / TIMELINE_CONFIG.TRACK.SPACING);
+    if (newTrack !== track.track && newTrack >= 0 && newTrack < textTracks.length) {
+      setTargetTrack(newTrack);
+    } else {
+      setTargetTrack(null);
+    }
+  };
+
   return (
     <div style={{ position: 'relative' }}>
-      <Stage width={width} height={height} onWheel={handleWheel}>
+      <Stage ref={stage} width={width} height={height} onWheel={handleWheel}>
         <Layer offsetX={offsetX}>
-          <Group x={0} y={10}>{renderTicks()}</Group>
+          <Group x={0} y={0}>
+            {renderTicks()}
+            <Group>
+              {renderTrackBackground()}
+              {renderTextTracks()}
+            </Group>
+          </Group>
         </Layer>
       </Stage>
       <div
         style={{
-          width: width,
-          height: '16px',
+          width,
+          height: 16,
           position: 'absolute',
-          bottom: -100,
+          bottom: 0,
           left: 0,
           overflow: 'auto'
         }}
-        onScroll={(e) => {
-          const scrollLeft = e.currentTarget.scrollLeft;
-          setOffsetX(scrollLeft);
-        }}
+        onScroll={(e) => setOffsetX(e.currentTarget.scrollLeft)}
       >
-        <div
-          style={{
-            width: width * scale,
-            height: '100%',
-            position: 'relative'
-          }}
-        />
+        <div style={{ width: width * scale, height: '100%', position: 'relative' }} />
       </div>
     </div>
   );
