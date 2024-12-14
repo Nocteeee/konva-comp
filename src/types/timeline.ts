@@ -41,6 +41,7 @@ export interface TimelineRulerProps {
   width: number;
   height: number;
   textTracks?: TextTrack[];
+  imageTracks?: ImageTrack[];
 }
 
 /**
@@ -49,4 +50,34 @@ export interface TimelineRulerProps {
 export interface Position {
   x: number;
   y: number;
+}
+
+/**
+ * 图片轨道数据结构
+ */
+export interface ImageTrack {
+  id: string;
+  imageUrl: string;  // 图片URL
+  startTime: number;
+  endTime: number;
+  track: number;
+}
+
+/**
+ * 图片轨道组件属性
+ */
+export interface ImageTrackProps {
+  id: string;
+  imageUrl: string;
+  startX: number;
+  width: number;
+  y: number;
+  maxX: number;
+  track: number;
+  tracksCount: number;
+  trackStartY: number;
+  onDragEnd?: (id: string, newStartX: number) => void;
+  onChange?: (id: string, newTrack: number) => void;
+  onDrag?: (id: string, newY: number) => void;
+  isTargeted?: boolean;
 } 

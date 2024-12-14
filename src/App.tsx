@@ -1,19 +1,10 @@
 import React from 'react';
 import { Stage, Layer } from 'react-konva';
-import EditableImage from './components/EditableImage';
-import EditableVideo from './components/EditableVideo';
 import TimelineRuler from './components/TimelineRuler';
-
-interface TextTrack {
-  id: string;
-  text: string;
-  startTime: number;
-  endTime: number;
-  track: number;
-}
+import { TextTrack, ImageTrack } from './types/timeline';
 
 const App: React.FC = () => {
-  // 添加测试用的文字轨道数据
+  // 文字轨道测试数据
   const textTracksData: TextTrack[] = [
     {
       id: '1',
@@ -28,21 +19,25 @@ const App: React.FC = () => {
       startTime: 50,
       endTime: 100,
       track: 1
-    },
+    }
+  ];
+
+  // 图片轨道测试数据
+  const imageTracksData: ImageTrack[] = [
     {
-      id: '3',
-      text: '第三段字幕',
-      startTime: 100,
-      endTime: 110,
+      id: 'img1',
+      imageUrl: 'https://picsum.photos/200/100',  // 使用随机图片作为测试
+      startTime: 20,
+      endTime: 80,
       track: 2
     },
-    // {
-    //   id: '4',
-    //   text: '第四段字幕',
-    //   startTime: 110,
-    //   endTime: 120,
-    //   track: 3
-    // }
+    {
+      id: 'img2',
+      imageUrl: 'https://picsum.photos/200/100?random=2',
+      startTime: 90,
+      endTime: 120,
+      track: 3
+    }
   ];
 
   return (
@@ -53,6 +48,7 @@ const App: React.FC = () => {
           width={window.innerWidth}
           height={400}
           textTracks={textTracksData}
+          imageTracks={imageTracksData}
         />
       </div>
     </div>
